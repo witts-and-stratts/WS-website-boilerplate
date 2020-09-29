@@ -1,5 +1,9 @@
-const gulp = require('gulp');
-const pug = require('gulp-pug2');
+/* eslint-disable func-names */
+const {
+  series, src, dest, watch, parallel,
+} = require('gulp');
+const pug = require('gulp-pug-3');
+const newer = require('gulp-newer');
 const gutil = require('gulp-util');
 const plumber = require('gulp-plumber');
 const notify = require('gulp-notify');
@@ -17,40 +21,52 @@ const imagemin = require('gulp-imagemin');
 // All source files and folders are placed in the "src" directory,
 // the processed files will be compiled to the "dist" folder
 
-// The constants below specify the directory for the different
+// The settings below specify the directory for the different
 // languages handled by gulp
 
 const settings = {
   pug: {
-    src: 'src/pug',
-    dist: 'dist',
+    src: 'src/pug/**/*.pug',
+    dest: 'dist',
   },
   sass: {
-    src: 'src/sass',
-    dist: 'dist/assets/css',
+    src: 'src/sass/**/*.scss',
+    dest: 'dist/assets/css',
     includePaths: ['node_modules/foundation-sites/scss'],
-    outputStyle: 'compressed',
+    outputStyle: 'expanded',
   },
   js: {
-    src: 'src/js',
-    dist: 'dist/assets/js',
+    src: 'src/js/**/*.js',
+    dest: 'dist/assets/js',
   },
   fonts: {
-    src: 'src/fonts',
-    dist: 'dist/assets/fonts',
+    src: 'src/fonts/**/*.*',
+    dest: 'dist/assets/fonts',
   },
   img: {
-    src: 'src/img',
-    dist: 'dist/assets/img',
+    src: 'src/img/**/*.*',
+    dest: 'dist/assets/img',
   },
   iconfont: {
-    src: 'src/iconfonts',
+    src: 'src/iconfonts/**/*.*',
     path: 'src/icon-font-template.scss',
-    dist: 'dist/assets/fonts',
+    dest: 'dist/assets/fonts',
     fontName: 'iconfonts',
     targetPath: '../../../src/sass/components/iconfonts.scss', // The path where the (S)CSS file should be saved, relative to the path used in gulp.dest() (optional, defaults to _icons.css).
-    fontPath: '/assets/fonts/' // Directory of font files relative to generated (S)CSS file (optional, defaults to ./)
-  }
+    fontPath: '/assets/fonts/', // Directory of font files relative to generated (S)CSS file (optional, defaults to ./)
+  },
+};
+
+// Utility Functions -----------------------------------------------------
+// Task error handler
+const onError = function (error, message) {
+  notify({
+    title: 'Error in Build',
+    message,
+  }).write(error);
+
+  gutil.log(gutil.colors.bgRed(message));
+  this.emit('end');
 };
 
 /* ---------------------------------------------------------------
@@ -58,31 +74,32 @@ const settings = {
  *  -------------------------------------------------------------*/
 
 /**
- * Pug Tasks
+ * Pug Task
+ * pugTask compiles pug to html
  */
-gulp.task('pug', () => {
-  return gulp
-    .src(`${settings.pug.src}/**/*.pug`)
+function pugTask() {
+  return src(settings.pug.src)
     .pipe(plumber({
-      errorHandler: onError
+      errorHandler: onError,
     }))
-    .on('error', onError)
     .pipe(pug())
-    .pipe(gulp.dest(`${settings.pug.dist}`));
-});
+    .pipe(dest(settings.pug.dest));
+}
 
-// Converts SVG icons placed in the SVG source directory to icon fonts
-gulp.task('iconfont', () => {
-  return gulp
-    .src(`${settings.iconfont.src}/**/*.svg`)
+/**
+ * Iconfont Task
+ * iconfontTask converts SVG icons to icon fonts
+ */
+function iconfontTask() {
+  return src(settings.iconfont.src)
     .pipe(plumber({
-      errorHandler: onError
+      errorHandler: onError,
     }))
     .pipe(iconfontCSS({
       path: settings.iconfont.path,
       fontName: settings.iconfont.fontName,
       targetPath: settings.iconfont.targetPath,
-      fontPath: settings.iconfont.fontPath
+      fontPath: settings.iconfont.fontPath,
     }))
     .pipe(iconfont({
       fontName: settings.iconfont.fontName,
@@ -90,120 +107,106 @@ gulp.task('iconfont', () => {
       formats: ['ttf', 'eot', 'woff', 'woff2', 'svg'],
       timestamp: Math.round(Date.now() / 1000),
       normalize: true,
-      fontHeight: 1001
+      fontHeight: 1001,
     }))
-    .pipe(gulp.dest(`${settings.iconfont.dist}`))
-})
+    .pipe(dest(settings.iconfont.dest));
+}
 
 /**
- * Sass Tasks
- * Compiles sass files to css and auto-inject into browsers
+ * Sass Task
+ * sassTask compiles sass files to css and auto-inject into open browsers
  */
-gulp.task('sass', () => {
-  return gulp
-    .src(`${settings.sass.src}/**/*.scss`)
+function sassTask() {
+  return src(settings.sass.src)
     .pipe(sourcemaps.init())
     .pipe(plumber({
-      errorHandler: onError
+      errorHandler: onError,
     }))
-    .on('error', onError)
-    .pipe(
-      sass({
-        outputStyle: settings.sass.outputStyle,
-        includePaths: settings.sass.includePaths,
-      }),
-    )
+    .pipe(sass({
+      outputStyle: settings.sass.outputStyle,
+      includePaths: settings.sass.includePaths,
+    }))
     .pipe(autoprefixer())
     .pipe(sourcemaps.write('./sass-maps'))
-    .pipe(gulp.dest(settings.sass.dist))
+    .pipe(dest(settings.sass.dest))
     .pipe(browserSync.stream());
-});
+}
 
-// Copy fonts
-gulp.task('fonts', () => {
-  return gulp
-    .src(`${settings.fonts.src}/**/*.*`)
-    .pipe(gulp.dest(settings.fonts.dist));
-});
+/**
+ * Font Task
+ * fontTask copies fonts placed in the source directory to the destination directory
+ */
+function fontTask() {
+  return src(settings.fonts.src)
+    .pipe(dest(settings.fonts.dest));
+}
 
-
-// Copy Images
-gulp.task('images', () => {
-  return gulp
-    .src(`${settings.img.src}/**/*.*`)
+/**
+ * Image Task
+ * imageTasks compresses optimises GIF, JPG, PNG and SVG images
+ */
+function imageTask() {
+  return src(settings.img.src)
+    .pipe(newer(settings.img.dest))
     .pipe(imagemin([
       imagemin.gifsicle({
-        interlaced: true
+        interlaced: true,
       }),
       imagemin.jpegtran({
-        progressive: true
+        progressive: true,
       }),
       imagemin.optipng({
-        optimizationLevel: 5
+        optimizationLevel: 5,
       }),
       imagemin.svgo({
         plugins: [{
-            removeViewBox: true
-          },
-          {
-            cleanupIDs: false
-          }
-        ]
-      })
+          removeViewBox: true,
+        },
+        {
+          cleanupIDs: false,
+        },
+        ],
+      }),
     ], {
-      verbose: true
+      verbose: true,
     }))
-    .pipe(gulp.dest(settings.img.dist));
+    .pipe(dest(settings.img.dest));
+}
+
+browserSync.init({
+  server: {
+    baseDir: './dist',
+  },
 });
 
-// Copy JS
-// gulp.task('js', () => {
-//   return gulp
-//     .src(`${settings.js.src}/**/*.*`)
-//     .pipe(gulp.dest(settings.js.dist));
-// });
+function reload(done) {
+  browserSync.reload();
+  return done();
+}
 
-// Default Task
+exports.build = function () {
+  settings.sass.outputStyle = 'compact';
+  parallel(sassTask, fontTask, imageTask, iconfontTask);
+};
 
-gulp.task('serve', ['pug', 'sass', 'fonts', 'images', 'iconfont'], function () {
-  browserSync.init({
-    server: {
-      baseDir: './dist',
-    },
-  });
-
+exports.default = function () {
   // Watch pugfile and transpile
-  gulp.watch(`${settings.pug.src}/**/*.pug`, ['pug']);
+  watch(settings.pug.src,
+    { ignoreInitial: false },
+    series(pugTask, reload));
 
   // Watch sass files
-  gulp.watch(`${settings.sass.src}/**/*.scss`, ['sass']);
+  watch(settings.sass.src, sassTask);
 
   // Watch font files
-  gulp.watch(`${settings.fonts.src}/**/*.*`, ['fonts']);
+  watch(settings.fonts.src, fontTask);
 
   // Watch image files
-  gulp.watch(`${settings.img.src}/**/*.*`, ['images']);
+  watch(settings.img.src, imageTask);
 
   // Watch icon files
-  gulp.watch(`${settings.iconfont.src}/**/*.*`, ['iconfont']);
-
-  // Watch html files and reload
-  gulp.watch(`${settings.pug.dist}/**/*.html`).on('change', browserSync.reload);
+  watch(settings.iconfont.src, iconfontTask);
 
   // Watch JS files and reload
-  gulp.watch(`${settings.js.dist}/**/*.js`).on('change', browserSync.reload);
-});
-
-gulp.task('default', ['serve']);
-
-// Utility Functions -----------------------------------------------------
-// Task error handler
-const onError = function (error, message) {
-  notify({
-    title: 'Error in Build',
-    message: error.message,
-  }).write(error);
-
-  gutil.log(gutil.colors.bgRed(error.message));
-  this.emit('end');
+  watch(`${settings.js.dest}/**/*.js`, reload);
 };
