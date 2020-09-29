@@ -6,8 +6,7 @@ yarn run install or npm run install to create the folders and install the depend
 
 # Setup
 
-To setup project, run `npm run setup`
+To setup project, run `yarn install` then `npm run setup`
 
 # Run Project
-
 To start build process and compilation, run `npm start`
